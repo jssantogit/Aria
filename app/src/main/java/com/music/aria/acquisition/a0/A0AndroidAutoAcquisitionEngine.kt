@@ -72,6 +72,8 @@ internal object A0AndroidAutoAcquisitionEngine {
         onSlotEvidence:(Int,List<A0ObservedCandidateHandoff.Choice>)->Unit={ _,_ -> },
         /** Only invoked AFTER A3 durably proves zero P/F for the whole album. */
         onUnusedReservationReleased:()->Unit={},
+        /** Only original track IDs whose untouched A3 slots were durably removed. */
+        onUnusedSlotsReleased:(Set<String>)->Unit={},
         /** Engine stopped before any durable reservation was attempted. */
         onPreReservationRefused:()->Unit={},
         sourceSongs:List<Song> = emptyList(),
@@ -206,6 +208,21 @@ internal object A0AndroidAutoAcquisitionEngine {
                     onCohesionEvidence=onCohesionEvidence,
                     onCacheEvidence=onCacheEvidence,
                     onSlotEvidence=onSlotEvidence)
+            }
+        }
+        // Normal completion only: do not infer rollback from a UI status.
+        // A3 independently verifies REQUESTED after the discovery/transfer
+        // scope returns; an exceptional exit retains all partial reservations.
+        if(!outcome.unusedReservationReleased && outcome.value.batch.results.size==entries.size) {
+            val eligible=entries.zip(outcome.value.batch.results)
+                .filter { (_,status) ->
+                    status==A0AutoBatchExecutor.TrackStatus.MANUAL_REVIEW ||
+                        status==A0AutoBatchExecutor.TrackStatus.NOT_STARTED
+                }.map { (entry,_) -> checkNotNull(jobs[entry.trackId]) }.toSet()
+            val released=A3AndroidAcquisitionLedger.get(app)
+                .releaseUntransferredAutomaticSlots(jobs.values.toList(),eligible)
+            if(released.isNotEmpty()) {
+                onUnusedSlotsReleased(jobs.filterValues { it in released }.keys.toSet())
             }
         }
         // Rewrap without discarding the coordinator's measured browse count.

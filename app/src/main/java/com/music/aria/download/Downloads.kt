@@ -1308,6 +1308,15 @@ object Downloads {
                         synchronized(lock) { autoAttemptGuard.rollback(request.entries) }
                         preReservationRefused=true
                     },
+                    onUnusedSlotsReleased={trackIds ->
+                        // The engine reports only A3-committed removals.
+                        // Preserve every other in-memory duplicate fence.
+                        synchronized(lock) {
+                            autoAttemptGuard.rollback(request.entries.filter {
+                                it.trackId in trackIds
+                            })
+                        }
+                    },
                     onUnusedReservationReleased={
                         // Called after A3's all-REQUESTED durable commit, even
                         // if discovery was interrupted by an exception. The

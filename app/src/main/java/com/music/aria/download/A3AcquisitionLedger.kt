@@ -186,6 +186,36 @@ internal class A3AcquisitionLedger(private val store:Store) {
         }
 
     /**
+     * Finalize only explicitly identified, untouched slots of a completed
+     * automatic attempt. Caller must own the original batch and have joined
+     * its workers. The complete batch is verified under the ledger lock;
+     * REQUESTED is the only phase with proof that no transfer was admitted.
+     * No URI, interrupted, failed or published reservation can be released.
+     * Return exactly the IDs durably removed, never a speculative UI result.
+     */
+    fun releaseUntransferredAutomaticSlots(
+        batchJobIds:List<String>,eligibleJobIds:Set<String>,
+    ):Set<String> = synchronized(lock) {
+        if(batchJobIds.size !in 1..64 ||
+            batchJobIds.distinct().size!=batchJobIds.size ||
+            eligibleJobIds.isEmpty() ||
+            !batchJobIds.containsAll(eligibleJobIds))return@synchronized emptySet()
+        val rows=batchJobIds.map { items[it] ?: return@synchronized emptySet() }
+        val batchId=rows.first().autoBatchId ?: return@synchronized emptySet()
+        if(rows.any { it.autoBatchId!=batchId ||
+                it.autoRecordingDigest==null || it.autoReleaseDigest==null } ||
+            items.values.count { it.autoBatchId==batchId }!=rows.size)
+            return@synchronized emptySet()
+        val released=rows.filter { it.id in eligibleJobIds &&
+            it.phase==Phase.REQUESTED }.map { it.id }.toSet()
+        if(released.isEmpty())return@synchronized emptySet()
+        val next=LinkedHashMap(items)
+        released.forEach { next.remove(it) }
+        commit(next)
+        released
+    }
+
+    /**
      * Return an existing auto reservation for a user-approved manual peer,
      * without altering its phase or ever reviving FAILED/AVAILABLE work.
      * A partial recording/release hash match is a canonical conflict and

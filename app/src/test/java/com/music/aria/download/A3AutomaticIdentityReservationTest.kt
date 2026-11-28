@@ -305,6 +305,66 @@ class A3AutomaticIdentityReservationTest {
                 "recording-1","ILLIT - Magnetic","SUPER REAL ME")?.phase)
     }
 
+    @Test fun partialBatchReleasesOnlyUntouchedEligibleSlots() {
+        val store=Store();val ledger=A3AcquisitionLedger(store)
+        ledger.reserveAutomaticBatch(listOf(
+            slot(first),slot(second,"recording-2","Artist - Two"),
+            slot(third,"recording-3","Artist - Three")))
+        ledger.advance(first,A3AcquisitionLedger.Phase.SEARCHING)
+        ledger.advance(first,A3AcquisitionLedger.Phase.AWAITING_SELECTION)
+        ledger.advance(first,A3AcquisitionLedger.Phase.SELECTED)
+        ledger.advance(first,A3AcquisitionLedger.Phase.TRANSFERRING)
+        ledger.advance(first,A3AcquisitionLedger.Phase.STAGED)
+        ledger.advance(first,A3AcquisitionLedger.Phase.PUBLISHING)
+        ledger.available(first,"content://media/external/audio/media/1",1024)
+        assertEquals(setOf(second),ledger.releaseUntransferredAutomaticSlots(
+            listOf(first,second,third),setOf(first,second)))
+        val reopened=A3AcquisitionLedger(store)
+        assertEquals(A3AcquisitionLedger.Phase.AVAILABLE,reopened.get(first)?.phase)
+        assertNull(reopened.get(second))
+        assertEquals(A3AcquisitionLedger.Phase.REQUESTED,reopened.get(third)?.phase)
+        val retry="fb49678b-5d24-4b57-82f8-ccf8f7fbda04"
+        reopened.reserveAutomaticBatch(listOf(slot(retry,"recording-2","Artist - Two")))
+        assertEquals(A3AcquisitionLedger.Phase.REQUESTED,reopened.get(retry)?.phase)
+        try {
+            reopened.reserveAutomaticBatch(listOf(slot(second)))
+            fail("published identity must remain fenced")
+        }catch(_:A3AcquisitionLedger.AutomaticIdentityAlreadyReserved) {}
+    }
+
+    @Test fun partialReleaseRejectsIncompleteOrForeignBatchAndInterruptedRows() {
+        val store=Store();val ledger=A3AcquisitionLedger(store)
+        ledger.reserveAutomaticBatch(listOf(slot(first),
+            slot(second,"recording-2","Artist - Two")))
+        ledger.reserveAutomaticBatch(listOf(slot(third,"recording-3","Artist - Three")))
+        val before=store.raw
+        assertTrue(ledger.releaseUntransferredAutomaticSlots(
+            listOf(first),setOf(first)).isEmpty())
+        assertTrue(ledger.releaseUntransferredAutomaticSlots(
+            listOf(first,second),setOf(third)).isEmpty())
+        assertTrue(ledger.releaseUntransferredAutomaticSlots(
+            listOf(first,second,third),setOf(second)).isEmpty())
+        assertEquals(before,store.raw)
+        ledger.interruptActiveOnColdStart()
+        assertTrue(ledger.releaseUntransferredAutomaticSlots(
+            listOf(first,second),setOf(first,second)).isEmpty())
+    }
+
+    @Test fun failedPartialReleaseCommitRetainsBothDurableAndMemoryRows() {
+        val store=Store();val ledger=A3AcquisitionLedger(store)
+        ledger.reserveAutomaticBatch(listOf(slot(first),
+            slot(second,"recording-2","Artist - Two")))
+        ledger.advance(first,A3AcquisitionLedger.Phase.SEARCHING)
+        val before=store.raw
+        store.failWrites=true
+        try {
+            ledger.releaseUntransferredAutomaticSlots(listOf(first,second),setOf(second))
+            fail("commit must succeed before admitting retry")
+        }catch(_:IOException) {}
+        assertEquals(before,store.raw)
+        assertNotNull(ledger.get(second))
+    }
+
     @Test fun multipleUniqueSlotsReserveInOneDurableCommit() {
         val store=Store();val ledger=A3AcquisitionLedger(store)
         ledger.reserveAutomaticBatch(listOf(
