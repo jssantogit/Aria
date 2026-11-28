@@ -23,6 +23,7 @@ on:
       - audit/ams-detail-host-reconciliation-20261127
       - audit/ams-provider-overflow-reconciliation-20261127
       - audit/ams-held-menu-lifecycle-20261127
+      - audit/ams-provider-lifted-menu-20261127
 permissions:
   contents: read
 concurrency:

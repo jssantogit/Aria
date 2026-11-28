@@ -277,3 +277,60 @@ internal fun AmsShelfHeldMenu(
         )
     }
 }
+
+
+/** The source-specific route never changes the native held-card presentation. */
+internal class ProviderShelfHeldState {
+    var target by mutableStateOf<com.music.bitchord.data.model.ShelfItem?>(null)
+        private set
+    var origin by mutableStateOf<HeldItem?>(null)
+        private set
+    val visible get() = target != null && origin != null
+
+    fun hold(card: com.music.bitchord.data.model.ShelfItem) {
+        val captured = LongPressOrigin.consume()
+        if (captured == null || card.videoId != null ||
+            canonicalCatalogEntityMenuSpec(card.browseId, card.appleStoreUrl) == null ||
+            com.music.bitchord.ui.providerHeldOverflowRoute(card.browseId, true, true) == null
+        ) return
+        origin = captured
+        target = card
+    }
+
+    fun dismiss() { target = null }
+}
+
+@Composable
+internal fun ProviderShelfHeldMenu(
+    held: ProviderShelfHeldState,
+    allowed: (com.music.bitchord.data.model.ShelfItem) -> Boolean,
+    hazeState: HazeState,
+    bottomChromeClearance: Dp,
+) {
+    val latestAllowed by androidx.compose.runtime.rememberUpdatedState(allowed)
+    var ratingCard by remember(held) { mutableStateOf<com.music.bitchord.data.model.ShelfItem?>(null) }
+    var rating by remember(held) { mutableStateOf<AmsHeldRating?>(null) }
+    val target = held.target?.takeIf(latestAllowed)
+    val ratingAllowed = ratingCard?.let(latestAllowed) == true
+    LaunchedEffect(target, held.target, ratingAllowed) {
+        if (target == null && held.target != null) held.dismiss()
+        if (!ratingAllowed) { ratingCard = null; rating = null }
+    }
+    AmsHeldRatingDialog(rating.takeIf { ratingAllowed }) {
+        rating = null
+        ratingCard = null
+    }
+    HeldContextMenu(
+        item = target, held = held.origin, hazeState = hazeState,
+        bottomChromeClearance = bottomChromeClearance, hostProvidesBlur = true,
+        onDismiss = held::dismiss, onPreviewClick = null,
+    ) { card ->
+        CanonicalCatalogEntityMenuBody(
+            browseId = card.browseId.orEmpty(), title = card.title,
+            subtitle = card.subtitle.orEmpty(), artworkUrl = card.thumbnailUrl,
+            sourceStoreUrl = card.appleStoreUrl, onDismiss = held::dismiss,
+            onRate = { ratingCard = card; rating = AmsHeldRating(it, card.thumbnailUrl) },
+            isCurrent = { latestAllowed(card) },
+        )
+    }
+}

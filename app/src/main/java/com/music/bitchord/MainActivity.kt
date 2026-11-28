@@ -1362,7 +1362,9 @@ private fun BitChordApp(
     // iTunes owns exact storefront IDs, so it uses the same native ⋯ launcher
     // but never inherits MusicBrainz ratings or legacy queue commands.
     var providerDetailOverflowOpen by remember(activeDetailSortId, selectedTab, activeCanonicalGenre?.tag) { mutableStateOf(false) }
-    var providerHeldCard by remember(activeDetailSortId, selectedTab, activeCanonicalGenre?.tag) { mutableStateOf<ShelfItem?>(null) }
+    val providerShelfHeld = remember(activeDetailSortId, selectedTab, activeCanonicalGenre?.tag, detailActiveShelf?.title) {
+        com.music.bitchord.ui.screens.ProviderShelfHeldState()
+    }
     // A device folder's equivalents — its sort and whether it is a grid —
     // kept apart for Downloads and shared by every other folder, as they
     // always were. Up here because both the page and the top bar's menu read
@@ -2458,8 +2460,7 @@ private fun BitChordApp(
             amsShelfHeld.hold(item, amsHoldScope)
         } else if (id?.startsWith("discogs:") == true || id?.startsWith("itunes:") == true) {
             // Source-only metadata never enters the legacy collection actions.
-            providerHeldCard = item
-            providerDetailOverflowOpen = true
+            providerShelfHeld.hold(item)
         } else if (id != null) {
             openBrowseMenu(
                 BrowseTarget(
@@ -3675,7 +3676,7 @@ private fun BitChordApp(
             (browseActions != null && browseMenuOrigin != null) ||
             (recentHeldRecording != null && recentHeldOrigin != null) ||
             (heldCatalogSearchRow != null && heldCatalogSearchOrigin != null) ||
-            amsSearchHeld.visible || amsShelfHeld.visible ||
+            amsSearchHeld.visible || amsShelfHeld.visible || providerShelfHeld.visible ||
             (heldPublicPlaylistSearchRow != null && heldPublicPlaylistSearchOrigin != null)
         // Keep the page stable while the held bitmap lifts and returns.
         // Re-blurring the whole Activity each frame flashed its content.
@@ -4363,8 +4364,7 @@ private fun BitChordApp(
                                 val selected = item.browseId
                                 if (selected?.startsWith("itunes:") == true ||
                                     selected?.startsWith("discogs:") == true) {
-                                    providerHeldCard = item
-                                    providerDetailOverflowOpen = true
+                                    providerShelfHeld.hold(item)
                                 } else onBrowseLongPress(item)
                             },
                         )
@@ -5993,7 +5993,7 @@ private fun BitChordApp(
                                     ),
                                     onOpenCatalogOverflow = {
                                         if (sourceOwnedAppleAlbum) {
-                                            providerHeldCard = null
+                                            providerShelfHeld.dismiss()
                                             providerDetailOverflowOpen = true
                                         } else catalogAlbumOverflowOpen = true
                                     },
@@ -6004,7 +6004,7 @@ private fun BitChordApp(
                                     },
                                     onAlbumActions = {
                                         if (sourceOwnedAppleAlbum) {
-                                            providerHeldCard = null
+                                            providerShelfHeld.dismiss()
                                             providerDetailOverflowOpen = true
                                         } else browseActions = BrowseTarget(
                                             browseId = toolbarAlbum.browseId,
@@ -6046,7 +6046,7 @@ private fun BitChordApp(
                                         onClick = {
                                             browseMenuOrigin = null
                                             if (appleArtist) {
-                                                providerHeldCard = null
+                                                providerShelfHeld.dismiss()
                                                 providerDetailOverflowOpen = true
                                             } else browseActions = BrowseTarget(
                                                 browseId = currentArtist.browseId,
@@ -6499,7 +6499,7 @@ private fun BitChordApp(
                     cover = source.thumbnailUrl,
                     sourceStoreUrl = sourceUrl,
                     loadAmsLabels = if (ams) ({ viewModel.loadAmsCollectionLabels(source.browseId) }) else null,
-                    expanded = providerDetailOverflowOpen && providerHeldCard == null,
+                    expanded = providerDetailOverflowOpen,
                     onDismiss = { providerDetailOverflowOpen = false },
                     hazeState = hazeState,
                     anchorBounds = catalogAlbumOverflowAnchor,
@@ -6510,36 +6510,7 @@ private fun BitChordApp(
             // Do not let a retained card or expanded flag follow that route.
             LaunchedEffect(pageRouteKey) {
                 providerDetailOverflowOpen = false
-                providerHeldCard = null
-            }
-            // Keep the exact held-card snapshot mounted after the menu closes
-            // so its rating dialog can survive dismissal. Revocation removes
-            // the whole host, not just the frosted panel.
-            val heldProviderRoute = com.music.bitchord.ui.providerHeldOverflowRoute(
-                providerHeldCard?.browseId, appleReadAllowed, discogsReadAllowed,
-            )
-            LaunchedEffect(providerHeldCard, heldProviderRoute) {
-                if (providerHeldCard != null && heldProviderRoute == null) {
-                    providerDetailOverflowOpen = false
-                    providerHeldCard = null
-                }
-            }
-            providerHeldCard?.takeIf { heldProviderRoute != null }?.let { card ->
-                com.music.bitchord.ui.screens.CanonicalCatalogReleaseOverflowMenu(
-                    browseId = requireNotNull(heldProviderRoute),
-                    title = card.title,
-                    subtitle = card.subtitle.orEmpty(),
-                    cover = card.thumbnailUrl,
-                    sourceStoreUrl = card.appleStoreUrl,
-                    expanded = providerDetailOverflowOpen,
-                    onDismiss = { providerDetailOverflowOpen = false },
-                    hazeState = hazeState,
-                    onSettings = {
-                        providerDetailOverflowOpen = false
-                        providerHeldCard = null
-                        showSettings = true
-                    },
-                )
+                providerShelfHeld.dismiss()
             }
             openedPublicPlaylist?.takeIf {
                 toolbarOwner == NativeTopBarRouteOwner.PUBLIC_PLAYLIST
@@ -7377,6 +7348,23 @@ private fun BitChordApp(
             CanonicalSearchContextOverlays()
             com.music.bitchord.ui.screens.AmsSearchHeldMenu(amsSearchHeld, viewModel, hazeState,
                 heldChromeClearance)
+            com.music.bitchord.ui.screens.ProviderShelfHeldMenu(
+                held = providerShelfHeld,
+                allowed = { card ->
+                    com.music.bitchord.ui.providerHeldOverflowRoute(
+                        card.browseId, appleReadAllowed, discogsReadAllowed,
+                    ) != null && when (pageRouteKey) {
+                        "$TAB_KEY$TAB_HOME" ->
+                            (canonicalHomeState as? UiState.Success)?.data.orEmpty().any { card in it.items }
+                        "$TAB_KEY$TAB_EXPLORE" ->
+                            (canonicalGenreState as? UiState.Success)?.data.orEmpty().any { card in it.items }
+                        else -> visualDetail?.takeIf { it.browseId == pageRouteKey }
+                            ?.sections?.any { card in it.items } == true
+                    }
+                },
+                hazeState = hazeState,
+                bottomChromeClearance = heldChromeClearance,
+            )
             com.music.bitchord.ui.screens.AmsShelfHeldMenu(
                 held = amsShelfHeld,
                 loadCollection = viewModel::loadAmsCollectionLabels,
