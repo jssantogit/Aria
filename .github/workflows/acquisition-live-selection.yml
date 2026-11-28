@@ -3,6 +3,11 @@ name: Acquisition — Soulseek live selection
 on:
   workflow_dispatch:
     inputs:
+      corpus:
+        description: 'Frozen corpus'
+        type: choice
+        options: [kpop1, mixed2]
+        default: kpop1
       cases:
         description: 'Comma-separated frozen corpus IDs; empty means all 30'
         type: string
@@ -13,6 +18,8 @@ on:
       - '.github/workflows/acquisition-live-selection.yml'
       - 'scripts/acquisition_live_selection.sh'
       - 'scripts/acquisition_live_install.sh'
+      - 'app/src/main/java/com/music/aria/acquisition/a0/A0AutoCandidateSelectionPolicy.kt'
+      - 'app/src/main/java/com/music/aria/acquisition/a0/A0AutoDiscoveryCoordinator.kt'
       - 'app/src/androidTest/java/com/music/aria/acquisition/live/SoulseekLiveSelectionTest.kt'
 permissions:
   contents: read
@@ -47,6 +54,9 @@ jobs:
           # This push reruns only the three unresolved tracks. Manual dispatch
           # defaults to the entire frozen corpus.
           ARIA_LIVE_CASES: ${{ github.event_name == 'push' && 'lesserafim_antifragile,straykids_gods_menu,seventeen_very_nice' || inputs.cases }}
+          ARIA_LIVE_CORPUS: ${{ github.event_name == 'push' && 'kpop1' || inputs.corpus }}
+          # Public repository: explicit opt-in for peer-advertised basenames.
+          ARIA_LIVE_NAMES: ${{ vars.SOULSEEK_LIVE_EXPORT_FILENAMES == 'true' && 'true' || 'false' }}
           SLSK_USER: ${{ secrets.SOULSEEK_CI_USERNAME || secrets.SOULSEEK_USERNAME || secrets.SOULSEEK_USER }}
           SLSK_PASS: ${{ secrets.SOULSEEK_CI_PASSWORD || secrets.SOULSEEK_PASSWORD || secrets.SOULSEEK_PASS }}
         with:
@@ -64,5 +74,13 @@ jobs:
         with:
           name: acquisition-live-selection-${{ github.run_id }}
           path: acquisition-live-report.tsv
+          if-no-files-found: ignore
+          retention-days: 3
+      - name: Upload separate candidate audit (no peer identifiers)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acquisition-live-candidates-${{ github.run_id }}
+          path: acquisition-live-candidates.jsonl
           if-no-files-found: ignore
           retention-days: 3

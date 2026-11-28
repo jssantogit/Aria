@@ -154,6 +154,15 @@ internal object A0AutoCandidateSelectionPolicy {
         else -> null
     }
 
+    /** Optional in-memory audit of the actual first-failing gate. No production logging. */
+    data class CandidateAudit(
+        val score:Int,val match:A0CandidateRank.Match,
+        val warnings:List<A0CandidateRank.Warning>,
+        val stage:String,val reason:String,
+        val preflight:String="NOT_EVALUATED",
+        val album:String="NOT_EVALUATED",
+        val quality:String="NOT_EVALUATED",
+    )
     fun preview(
         target:SoulseekBatchPlan.Entry,
         observed:List<A0ObservedCandidateHandoff.Choice>,
@@ -162,6 +171,7 @@ internal object A0AutoCandidateSelectionPolicy {
         sampleTruncated:Boolean=false,
         /** The coordinator may first attempt unique release-cohesion evidence. */
         resolveExactTies:Boolean=true,
+        onAudit:((A0ObservedCandidateHandoff.Choice,CandidateAudit)->Unit)?=null,
     ):Decision {
         val parts=target.query.split(Regex("\\s+[-–—]\\s+"),limit=2)
         val expected=target.durationSeconds
@@ -211,6 +221,13 @@ internal object A0AutoCandidateSelectionPolicy {
                 sizeBytes=claim.sizeBytes,
                 expectedAlbum=target.album
             )
+            fun audit(stage:String,reason:String,preflight:String="NOT_EVALUATED",
+                album:String="NOT_EVALUATED",quality:String="NOT_EVALUATED") {
+                if(onAudit!=null)try {
+                    onAudit(choice,CandidateAudit(ranked.score,ranked.match,ranked.warnings,
+                        stage,reason,preflight,album,quality))
+                }catch(_:Exception){}
+            }
             if(ranked.match!=A0CandidateRank.Match.ALL_TERMS ||
                 ranked.score<65 ||
                 A0CandidateRank.Warning.ARTIST_CONFLICT in ranked.warnings ||
@@ -238,6 +255,7 @@ internal object A0AutoCandidateSelectionPolicy {
                     else -> RankReject.SCORE_BELOW_THRESHOLD
                 }
                 increment(rankReasons,why)
+                audit("RANK_REJECTED",why.name)
                 return@mapNotNull null
             }
             val preflight=A0CandidatePreflight.assess(
@@ -247,6 +265,7 @@ internal object A0AutoCandidateSelectionPolicy {
             if(preflight.confidence!=A0CandidatePreflight.Confidence.STRONG) {
                 preflightRejected++
                 preflight.reasons.firstOrNull()?.let { increment(preflightReasons,it) }
+                audit("PREFLIGHT_REJECTED",preflight.reasons.joinToString(",") { it.name },preflight.confidence.name)
                 return@mapNotNull null
             }
             val directory=choice.remotePath.replace('\\','/')
@@ -272,6 +291,7 @@ internal object A0AutoCandidateSelectionPolicy {
                     A0CanonicalAlbumPolicy.Status.MATCHING_CLAIM_UNVERIFIED)) {
                 albumRejected++
                 increment(albumReasons,album.reason)
+                audit("ALBUM_REJECTED",album.reason.name,preflight.confidence.name,album.status.name)
                 return@mapNotNull null
             }
             val quality=A0DownloadQualityPolicy.evaluate(
@@ -284,8 +304,10 @@ internal object A0AutoCandidateSelectionPolicy {
                 A0DownloadQualityPolicy.Status.COMPATIBLE_CLAIM_UNVERIFIED) {
                 qualityRejected++
                 increment(qualityReasons,quality.reason)
+                audit("QUALITY_REJECTED",quality.reason.name,preflight.confidence.name,album.status.name,quality.status.name)
                 return@mapNotNull null
             }
+            audit("ELIGIBLE","ALL_GATES_PASSED",preflight.confidence.name,album.status.name,quality.status.name)
             Eligible(choice,ranked.score)
         }
         val funnel=Funnel(rankRejected,preflightRejected,albumRejected,qualityRejected)

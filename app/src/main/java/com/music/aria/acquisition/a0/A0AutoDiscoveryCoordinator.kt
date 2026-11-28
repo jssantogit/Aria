@@ -119,6 +119,7 @@ internal class A0AutoDiscoveryCoordinator(
          * for one explicit human review after this search closes.
          */
         onSlotEvidence:(Int,List<A0ObservedCandidateHandoff.Choice>)->Unit={ _,_ -> },
+        onCandidateAudit:((Int,A0ObservedCandidateHandoff.Choice,A0AutoCandidateSelectionPolicy.CandidateAudit)->Unit)?=null,
     ):Report {
         val count=entries.size
         val valid=count in 1..SoulseekBatchPlan.MAX_TRACKS &&
@@ -184,7 +185,10 @@ internal class A0AutoDiscoveryCoordinator(
             // explicit auto opt-in permits first-observed READY selection.
             val baseline=A0AutoCandidateSelectionPolicy.preview(
                 entries[index],offers,quality,sampleTruncated=truncated,
-                resolveExactTies=false)
+                resolveExactTies=false,
+                onAudit=if(notify && onCandidateAudit!=null) { candidate,audit ->
+                    onCandidateAudit(index,candidate,audit)
+                } else null)
             if(baseline.reason!=A0AutoCandidateSelectionPolicy.Reason.AMBIGUOUS_EDITION)
                 return offers to baseline
             val snapshots=entries.indices.map {

@@ -8,6 +8,10 @@ if [[ -z "${SLSK_USER:-}" || -z "${SLSK_PASS:-}" ]]; then
   exit 1
 fi
 cases="${ARIA_LIVE_CASES:-}"
+corpus="${ARIA_LIVE_CORPUS:-kpop1}"
+names="${ARIA_LIVE_NAMES:-false}"
+[[ "$corpus" == kpop1 || "$corpus" == mixed2 ]] || exit 1
+[[ "$names" == true || "$names" == false ]] || exit 1
 if [[ -n "$cases" && ! "$cases" =~ ^[a-z0-9_]+(,[a-z0-9_]+)*$ ]]; then
   echo 'Invalid corpus case IDs.'
   exit 1
@@ -28,12 +32,29 @@ unset SLSK_USER SLSK_PASS
 # Do not expose raw instrumentation output or logcat. Only typed counters
 # from the focused test are retained and published.
 set +e
-adb shell am instrument -w -r -e aria_live_cases "${cases:-all}" -e class com.music.aria.acquisition.live.SoulseekLiveSelectionTest com.dev.aria.test/androidx.test.runner.AndroidJUnitRunner >"$raw" 2>&1
+adb shell am instrument -w -r -e aria_live_corpus "$corpus" -e aria_live_names "$names" -e aria_live_cases "${cases:-all}" -e class com.music.aria.acquisition.live.SoulseekLiveSelectionTest com.dev.aria.test/androidx.test.runner.AndroidJUnitRunner >"$raw" 2>&1
 rc=$?
 set -e
 printf 'case\tsearch\tdecision\treason\tobserved\teligible\trank_rejected\tpreflight_rejected\talbum_rejected\tquality_rejected\ttruncated\telapsed_ms\trank_detail\tpreflight_detail\talbum_detail\tquality_detail\tartist_credit_gaps\tmissing_title\tmissing_artist\ttie_resolution\ttie_groups\n' > acquisition-live-report.tsv
 awk -F= '/^INSTRUMENTATION_STATUS: aria_live=/{sub(/\r$/, "", $2); if ($2 ~ /^[A-Za-z0-9_\t,:-]+$/ && split($2,a,"\t")==21) print $2}' "$raw" >> acquisition-live-report.tsv
 cat acquisition-live-report.tsv
+# Only the structured candidate payload is exported; never raw logcat.
+python3 - "$raw" "$names" <<'PY'
+import base64, json, sys
+from pathlib import Path
+source, names = sys.argv[1:]
+fields = {"case","candidate","selected","stage","reason","score","match","warnings","preflight","album","quality","availability","format","duration","bitrate","sample_rate","bit_depth","tie_resolution"}
+with open("acquisition-live-candidates.jsonl","w",encoding="utf-8") as out:
+    for line in Path(source).read_text(errors="replace").splitlines():
+        prefix="INSTRUMENTATION_STATUS: aria_candidate="
+        if not line.startswith(prefix): continue
+        obj=json.loads(base64.b64decode(line[len(prefix):],validate=True))
+        if set(obj) != fields | ({"filename"} if names=="true" else set()):
+            raise SystemExit("Unexpected candidate report schema")
+        if "filename" in obj and ("/" in obj["filename"] or chr(92) in obj["filename"]):
+            raise SystemExit("Candidate filename contains a path")
+        out.write(json.dumps(obj,ensure_ascii=False)+"\n")
+PY
 # Check identity set, not merely row count. Duplicate/missing rows fail closed.
 if [[ "$rc" != 0 ]] || ! grep -q 'OK (1 test)' "$raw" || ! python3 - "$cases" <<'PY'
 import csv, sys

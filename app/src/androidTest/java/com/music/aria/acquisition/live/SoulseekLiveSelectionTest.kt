@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.music.aria.acquisition.a0.A0CandidateRank
 import com.music.aria.acquisition.a0.A0AutoCandidateSelectionPolicy
 import com.music.aria.acquisition.a0.A0AutoDiscoveryCoordinator
 import com.music.aria.acquisition.a0.A0CanonicalAcquisitionIntent
@@ -27,7 +28,7 @@ class SoulseekLiveSelectionTest {
     private data class Target(val id:String,val query:String,val album:String,val seconds:Int)
     // Frozen K-pop v1. Durations are reference seconds pending independent
     // catalog verification; do not adjust targets to match peer claims.
-    private val targets=listOf(
+    private val kpop1=listOf(
         Target("illit_magnetic","ILLIT - Magnetic","SUPER REAL ME",160),
         Target("illit_lucky_girl","ILLIT - Lucky Girl Syndrome","SUPER REAL ME",140),
         Target("illit_cherish","ILLIT - Cherish (My Love)","I'LL LIKE YOU",176),
@@ -59,6 +60,39 @@ class SoulseekLiveSelectionTest {
         Target("seventeen_hot","SEVENTEEN - HOT","Face the Sun",197),
         Target("seventeen_very_nice","SEVENTEEN - VERY NICE","Love & Letter Repackage Album",192),
     )
+    // Independent frozen pop/K-pop corpus. Reference metadata provisional.
+    private val mixed2=listOf(
+        Target("mj_billie_jean","Michael Jackson - Billie Jean","Thriller",294),
+        Target("mj_beat_it","Michael Jackson - Beat It","Thriller",258),
+        Target("mj_thriller","Michael Jackson - Thriller","Thriller",357),
+        Target("mj_bad","Michael Jackson - Bad","Bad",247),
+        Target("mj_smooth_criminal","Michael Jackson - Smooth Criminal","Bad",257),
+        Target("mj_dirty_diana","Michael Jackson - Dirty Diana","Bad",280),
+        Target("mj_black_or_white","Michael Jackson - Black or White","Dangerous",256),
+        Target("mj_they_dont_care","Michael Jackson - They Don't Care About Us","HIStory: Past, Present and Future, Book I",284),
+        Target("illit_my_world","ILLIT - My World","SUPER REAL ME",107),
+        Target("illit_midnight_fiction","ILLIT - Midnight Fiction","SUPER REAL ME",168),
+        Target("illit_ill_like_you","ILLIT - I'll Like You","I'LL LIKE YOU",131),
+        Target("illit_iykyk","ILLIT - IYKYK (If You Know You Know)","I'LL LIKE YOU",164),
+        Target("illit_tick_tack","ILLIT - Tick-Tack","I'LL LIKE YOU",151),
+        Target("illit_pimple","ILLIT - Pimple","I'LL LIKE YOU",167),
+        Target("illit_almond_chocolate","ILLIT - Almond Chocolate","Almond Chocolate",201),
+        Target("redvelvet_psycho","Red Velvet - Psycho","The ReVe Festival 'Finale'",210),
+        Target("redvelvet_feel_my_rhythm","Red Velvet - Feel My Rhythm","The ReVe Festival 2022 - Feel My Rhythm",210),
+        Target("exo_love_shot","EXO - Love Shot","LOVE SHOT – The 5th Album Repackage",200),
+        Target("exo_growl","EXO - Growl","XOXO",207),
+        Target("snsd_gee","Girls' Generation - Gee","Gee",201),
+        Target("shinee_ring_ding_dong","SHINee - Ring Ding Dong","2009, Year of Us",234),
+        Target("iu_blueming","IU - Blueming","Love poem",217),
+        Target("bigbang_bang_bang_bang","BIGBANG - BANG BANG BANG","MADE",220),
+        Target("madonna_like_a_prayer","Madonna - Like a Prayer","Like a Prayer",341),
+        Target("gaga_bad_romance","Lady Gaga - Bad Romance","The Fame Monster",294),
+        Target("britney_toxic","Britney Spears - Toxic","In the Zone",198),
+        Target("weeknd_blinding_lights","The Weeknd - Blinding Lights","After Hours",200),
+        Target("ariana_into_you","Ariana Grande - Into You","Dangerous Woman",244),
+        Target("taylor_blank_space","Taylor Swift - Blank Space","1989",231),
+        Target("bruno_locked_out","Bruno Mars - Locked Out of Heaven","Unorthodox Jukebox",233),
+    )
     // Signal only the actual executor's first selected candidate. This Error
     // passes its Exception handlers; finally blocks still close all readers.
     // Never fabricate a transfer result or touch audio bytes.
@@ -87,6 +121,13 @@ class SoulseekLiveSelectionTest {
                 preset=A0CanonicalAcquisitionIntent.QualityPreset.LOSSLESS,strict=true)
             var completed=0
             var observations=0
+            val args=InstrumentationRegistry.getArguments()
+            val targets=when(args.getString("aria_live_corpus") ?: "kpop1") {
+                "kpop1" -> kpop1
+                "mixed2" -> mixed2
+                else -> error("Unknown corpus")
+            }
+            val includeNames=args.getString("aria_live_names")=="true"
             val requested=InstrumentationRegistry.getArguments().getString("aria_live_cases").orEmpty()
             val ids=requested.takeUnless { it=="all" }.orEmpty().split(',').filter { it.isNotBlank() }
             require(ids.distinct().size==ids.size && ids.all { id -> targets.any { it.id==id } })
@@ -103,6 +144,8 @@ class SoulseekLiveSelectionTest {
                 var search="NOT_STARTED"
                 var decision:A0AutoCandidateSelectionPolicy.Decision?=null
                 var reachedBoundary=false
+                var winner:A0ObservedCandidateHandoff.Choice?=null
+                val evidence=linkedMapOf<A0ObservedCandidateHandoff.Choice,A0AutoCandidateSelectionPolicy.CandidateAudit?>()
                 // Observe the real discovery result without changing it.
                 val observed=object:A0AutoDiscoveryCoordinator.SearchPort {
                     override fun search(entry:SoulseekBatchPlan.Entry,
@@ -126,6 +169,7 @@ class SoulseekLiveSelectionTest {
                         override fun fetch(candidate:A0ObservedCandidateHandoff.Choice,
                             isCancelled:()->Boolean):A0AutoAcquisitionExecutor.FetchResult {
                             reachedBoundary=true
+                            winner=candidate
                             throw SelectionBoundary()
                         }
                         override fun inspect(receipt:A0VerifiedByteStager.Receipt,
@@ -143,7 +187,9 @@ class SoulseekLiveSelectionTest {
                         entries,profile,userRequested=true,optedIn=true,
                         isCancelled={Thread.currentThread().isInterrupted},
                         stillAuthorized={SoulseekActiveSession.isCurrent(generation)},
-                        onCandidateDecision={_,value -> decision=value})
+                        onCandidateDecision={_,value -> decision=value},
+                        onSlotEvidence={_,offers -> offers.forEach { evidence.putIfAbsent(it,null) }},
+                        onCandidateAudit={_,candidate,audit -> evidence[candidate]=audit})
                 } catch(_:SelectionBoundary) {
                     check(reachedBoundary)
                 } finally { transport.close() }
@@ -166,6 +212,41 @@ class SoulseekLiveSelectionTest {
                     selected?.tieResolution?.name?:"NONE",
                     selected?.tieGroups?:0).joinToString("\t")
                 instrument.sendStatus(0,Bundle().apply { putString("aria_live",row) })
+                // One structured row per candidate, including those that were
+                // not scored because the whole sample failed closed.
+                evidence.entries.forEachIndexed { index,(candidate,audit) ->
+                    val payload=org.json.JSONObject().apply {
+                        put("case",target.id)
+                        put("candidate",index+1)
+                        if(includeNames) {
+                            val leaf=candidate.claim.filename.substringAfterLast('/').substringAfterLast('\\')
+                            val safe=A0CandidateRank.safeDisplayName(leaf)
+                                .filterNot { it.isISOControl() }.take(240)
+                            put("filename",safe)
+                        }
+                        put("selected",candidate===winner)
+                        put("stage",audit?.stage?:"NOT_EVALUATED")
+                        put("reason",audit?.reason?:selected?.reason?.name?:"NOT_EVALUATED")
+                        put("score",audit?.score?:org.json.JSONObject.NULL)
+                        put("match",audit?.match?.name?:"NOT_EVALUATED")
+                        put("warnings",audit?.warnings?.joinToString(",") { it.name }.orEmpty())
+                        put("preflight",audit?.preflight?:"NOT_EVALUATED")
+                        put("album",audit?.album?:"NOT_EVALUATED")
+                        put("quality",audit?.quality?:"NOT_EVALUATED")
+                        put("availability",candidate.peerAvailability.tier.name)
+                        put("format",candidate.claim.format.lowercase().takeIf {
+                            it in setOf("flac","wav","mp3","aac","opus","ogg","m4a")
+                        }?:"OTHER")
+                        put("duration",candidate.claim.durationSeconds?:org.json.JSONObject.NULL)
+                        put("bitrate",candidate.claim.bitrateKbps?:org.json.JSONObject.NULL)
+                        put("sample_rate",candidate.claim.sampleRateHz?:org.json.JSONObject.NULL)
+                        put("bit_depth",candidate.claim.bitDepth?:org.json.JSONObject.NULL)
+                        put("tie_resolution",selected?.tieResolution?.name?:"NONE")
+                    }
+                    val encoded=android.util.Base64.encodeToString(
+                        payload.toString().toByteArray(Charsets.UTF_8),android.util.Base64.NO_WRAP)
+                    instrument.sendStatus(0,Bundle().apply { putString("aria_candidate",encoded) })
+                }
                 completed++
                 if(search=="FOUND" || search=="SCREENED_OUT")observations++
                 if(search=="STOP")break // no automatic reconnect on account/protocol failure
