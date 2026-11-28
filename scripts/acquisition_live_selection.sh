@@ -7,10 +7,8 @@ if [[ -z "${SLSK_USER:-}" || -z "${SLSK_PASS:-}" ]]; then
   echo 'Soulseek CI credentials missing (configure the workflow secret aliases).'
   exit 1
 fi
-app_apk=app/build/outputs/apk/dev/debug/app-dev-debug.apk
-test_apk=app/build/outputs/apk/androidTest/dev/debug/app-dev-debug-androidTest.apk
-adb install -r "$app_apk" >/dev/null
-adb install -r "$test_apk" >/dev/null
+source scripts/acquisition_live_install.sh
+aria_install_live_apks
 raw="$(mktemp)"
 cleanup() {
   adb shell run-as com.dev.aria rm -f files/aria-live-credentials >/dev/null 2>&1 || true
