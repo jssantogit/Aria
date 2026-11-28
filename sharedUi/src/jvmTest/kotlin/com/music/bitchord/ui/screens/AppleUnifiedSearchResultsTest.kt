@@ -98,6 +98,22 @@ class AppleUnifiedSearchResultsTest {
             emptyList(), emptyList(), states))
     }
 
+    @Test fun sparseExactArtistDoesNotHideExactTitleOrNamesakes() {
+        val first = artist(10,"SAY MY NAME")
+        val other = artist(11,"SAY MY NAME")
+        val own = album(15).copy(artistName=first.title,artistBrowseId=first.browseId)
+        val exactSong = track(16).copy(title="Say My Name",artistName="Other",artistBrowseId="itunes:br:artist:999")
+        val otherSong = track(17).copy(artistName=other.title,artistBrowseId=other.browseId)
+        val irrelevant = track(18).copy(artistName="Other")
+        val rows = appleUnifiedSearchEntries("say my name",listOf(first,other),
+            listOf(exactSong,otherSong,irrelevant),listOf(own))
+        assertEquals(AppleUnifiedSearchEntry.Artist(first),rows.first())
+        assertTrue(AppleUnifiedSearchEntry.Artist(other) in rows)
+        assertTrue(AppleUnifiedSearchEntry.Track(exactSong) in rows)
+        assertTrue(AppleUnifiedSearchEntry.Track(otherSong) in rows)
+        assertTrue(AppleUnifiedSearchEntry.Track(irrelevant) !in rows)
+    }
+
     @Test fun noExactArtistKeepsBoundedCandidatesAndOriginalTypes() {
         val artists = (1..9).map { artist(it, "Artist $it") }
         val entries = appleUnifiedSearchEntries("Artist", artists,

@@ -107,11 +107,17 @@ internal fun canonicalExploreGenreSearchHits(
 ): List<ShelfItem> {
     val term = normalizedGenreQuery(query)
     if (term.length < 2) return emptyList()
+    // Match only at a word boundary, not the suffix of alternative/progressive.
+    fun matches(value: String): Boolean {
+        val normalized = normalizedGenreQuery(value)
+        return normalized == term || normalized.startsWith(term) ||
+            normalized.indices.any { index ->
+                index > 0 && !normalized[index-1].isLetterOrDigit() &&
+                    normalized.startsWith(term,index)
+            }
+    }
     return canonicalAllExploreGenres.asSequence()
-        .filter { genre ->
-            normalizedGenreQuery(genre.title).contains(term) ||
-                normalizedGenreQuery(genre.tag).contains(term)
-        }
+        .filter { genre -> matches(genre.title) || matches(genre.tag) }
         .sortedWith(compareBy<CanonicalExploreGenre> { genre ->
             val title = normalizedGenreQuery(genre.title)
             val tag = normalizedGenreQuery(genre.tag)

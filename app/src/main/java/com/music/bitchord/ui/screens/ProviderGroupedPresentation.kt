@@ -24,7 +24,8 @@ internal data class ProviderDisplayGroup(
 internal fun providerSettingsDisplayName(entry: ProviderInventoryEntry): String =
     when (entry.key.providerId) {
         "musicbrainz" -> "MusicBrainz"
-        "itunes" -> "Apple / iTunes"
+        "itunes" -> "iTunes"
+        "apple_music_web" -> "Apple Music"
         "discogs" -> "Discogs"
         "lastfm" -> "Last.fm"
         "listenbrainz" -> "ListenBrainz"
@@ -68,7 +69,8 @@ internal fun searchProviderGroups(
     return groups.filter { group ->
         group.title.contains(needle, ignoreCase = true) ||
             presentableProviderFunctions(group).any {
-                it.entry.displayName.contains(needle, ignoreCase = true)
+                it.entry.displayName.contains(needle, ignoreCase = true) ||
+                    it.entry.functionSettingsText().title.contains(needle, ignoreCase = true)
             }
     }
 }

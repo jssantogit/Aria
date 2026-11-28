@@ -43,7 +43,7 @@ class AmsPhysicalSmokePolicyTest {
         val preview = registered.single { it.capability == ProviderCapability.AUDIO_PLAYBACK }
         assertEquals(ProviderSettingsTab.AUDIO_AND_EXTENSIONS,preview.tab)
         assertFalse(preview.supportsReordering)
-        assertEquals("Apple Music Web (Prévias de 30 s)",preview.displayName)
+        assertEquals("Apple Music",preview.displayName)
         assertFalse(registered.any { it.capability == ProviderCapability.DOWNLOAD })
     }
 }

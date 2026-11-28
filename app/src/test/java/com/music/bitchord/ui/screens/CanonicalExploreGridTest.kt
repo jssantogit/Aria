@@ -40,6 +40,12 @@ class CanonicalExploreGridTest {
     @get:Rule val compose = createComposeRule()
 
 
+    @Test fun artistQueryDoesNotMatchSuffixOfGenreWords() {
+        assertTrue(com.music.bitchord.ui.canonicalExploreGenreSearchHits("IVE").isEmpty())
+        assertTrue(com.music.bitchord.ui.canonicalExploreGenreSearchHits("rock").isNotEmpty())
+        assertTrue(com.music.bitchord.ui.canonicalExploreGenreSearchHits("death metal").isNotEmpty())
+    }
+
     @Test fun searchCategoryRowsUseNativePresentationAndOpenActualCategoryId() {
         val opened = mutableListOf<String>()
         compose.setContent {

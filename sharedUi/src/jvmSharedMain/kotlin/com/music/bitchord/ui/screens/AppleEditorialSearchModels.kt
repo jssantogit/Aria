@@ -158,6 +158,27 @@ fun appleUnifiedSearchEntries(
         uniqueTracks.getOrNull(index)?.let { add(AppleUnifiedSearchEntry.Track(it)) }
         uniqueAlbums.getOrNull(index)?.let { add(AppleUnifiedSearchEntry.Album(it)) }
     }
+    // A sparse artist result must not suppress exact song/album title matches
+    // or products of another independently returned exact artist. Keep IDs distinct.
+    if (primary != null && uniqueTracks.size + uniqueAlbums.size < 4) {
+        val otherArtists = exact.drop(1).distinctBy { it.browseId }.take(3)
+        otherArtists.forEach { add(AppleUnifiedSearchEntry.Artist(it)) }
+        val otherArtistIds = otherArtists.mapTo(hashSetOf()) { it.browseId }
+        val trackIds = uniqueTracks.mapTo(hashSetOf()) { it.key }
+        val albumIds = uniqueAlbums.mapTo(hashSetOf()) { it.browseId }
+        val otherTracks = tracks.filter {
+            (appleUnifiedArtistFold(it.title) == appleUnifiedArtistFold(query) ||
+                it.artistBrowseId in otherArtistIds) && trackIds.add(it.key)
+        }
+        val otherAlbums = albums.filter {
+            (appleUnifiedArtistFold(it.title) == appleUnifiedArtistFold(query) ||
+                it.artistBrowseId in otherArtistIds) && albumIds.add(it.browseId)
+        }
+        for (index in 0 until maxOf(otherTracks.size,otherAlbums.size)) {
+            otherTracks.getOrNull(index)?.let { add(AppleUnifiedSearchEntry.Track(it)) }
+            otherAlbums.getOrNull(index)?.let { add(AppleUnifiedSearchEntry.Album(it)) }
+        }
+    }
 }
 
 /**

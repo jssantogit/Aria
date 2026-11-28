@@ -72,7 +72,7 @@ class ProviderGroupedPresentationTest {
 
     @Test fun catalogShowsOneVendorPerInstanceWithoutFunctionSuffixes() {
         val groups = groupProviderRows(catalog)
-        assertEquals(listOf("MusicBrainz", "Apple / iTunes", "Discogs"),
+        assertEquals(listOf("MusicBrainz", "iTunes", "Discogs"),
             groups.map { it.title })
         assertEquals(listOf(3, 2, 1), groups.map { it.rows.size })
         assertEquals(listOf(search, discography, identity),
@@ -93,7 +93,7 @@ class ProviderGroupedPresentationTest {
         )
         val fullGroups = groupProviderRows(rows)
         val visible = presentableProviderGroups(fullGroups)
-        assertEquals(listOf("MusicBrainz", "Apple / iTunes", "Discogs"),
+        assertEquals(listOf("MusicBrainz", "iTunes", "Discogs"),
             visible.map { it.title })
         assertEquals(listOf(search, discography, identity),
             presentableProviderFunctions(visible.first()).map { it.entry.capability })
@@ -147,7 +147,7 @@ class ProviderGroupedPresentationTest {
             row(ams,audio,"Apple Music Web (Prévias de 30 s)",tab=ProviderSettingsTab.AUDIO_AND_EXTENSIONS))
         val groups = groupProviderRows(rows)
         val preview = groups.single { it.tab == ProviderSettingsTab.AUDIO_AND_EXTENSIONS }
-        assertEquals("Apple Music Web (Prévias de 30 s)",preview.title)
+        assertEquals("Apple Music",preview.title)
         assertEquals(listOf(audio),preview.rows.map { it.entry.capability })
         val old = mapOf(search to listOf(ProviderChoice(ams,true,0)),
             discography to listOf(ProviderChoice(ams,true,0)),
